@@ -2,7 +2,11 @@
 import torch
 import torch.nn as nn
 from .core import Callback
+<<<<<<< HEAD
 from src.callback.revin import RevIN
+=======
+from src.models.layers.revin import RevIN
+>>>>>>> e66adfdd4cc5ed9760bbfbfc6bf68d5afc82cbc6
 
 class RevInCB(Callback):
     def __init__(self, num_features: int, eps=1e-5, 
