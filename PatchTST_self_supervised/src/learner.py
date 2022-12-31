@@ -173,14 +173,14 @@ class Learner(GetAttr):
         # get the inputs
         self.xb, self.yb = batch
         # forward
-        pred = self.model_forward()
+        pred = self.model_forward() # return output_embed, pred
         # compute loss
         loss = self.loss_func(pred, self.yb)
         return pred, loss
 
     def model_forward(self):
         self('before_forward')
-        self.pred = self.model(self.xb)
+        self.pred = self.model(self.xb, output_embed=self.output_embed)
         self('after_forward')
         return self.pred
 

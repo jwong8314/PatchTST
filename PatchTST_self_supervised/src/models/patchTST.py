@@ -30,7 +30,8 @@ class PatchTST(nn.Module):
                  res_attention:bool=True, pre_norm:bool=False, store_attn:bool=False,
                  pe:str='zeros', learn_pe:bool=True, head_dropout = 0, 
                  head_type = "prediction", individual = False, 
-                 y_range:Optional[tuple]=None, verbose:bool=False, **kwargs):
+                 y_range:Optional[tuple]=None, verbose:bool=False, 
+                 contrastive_dim:int=256, **kwargs):
 
         super().__init__()
 
@@ -55,18 +56,22 @@ class PatchTST(nn.Module):
             self.head = RegressionHead(self.n_vars, d_model, target_dim, head_dropout, y_range)
         elif head_type == "classification":
             self.head = ClassificationHead(self.n_vars, d_model, target_dim, head_dropout)
+            
+        self.feature_decoder = FeatureDecoder(d_model, contrastive_dim, head_dropout)
 
 
-    def forward(self, z):                             
+    def forward(self, z, output_embed=False):                             
         """
         z: tensor [bs x num_patch x n_vars x patch_len]
         """   
-        z = self.backbone(z)                                                                # z: [bs x nvars x d_model x num_patch]
-        z = self.head(z)                                                                    
+        embedding = self.backbone(z)                                                                # z: [bs x nvars x d_model x num_patch]
+        z = self.head(embedding)                                                                    
         # z: [bs x target_dim x nvars] for prediction
         #    [bs x target_dim] for regression
         #    [bs x target_dim] for classification
         #    [bs x num_patch x n_vars x patch_len] for pretrain
+        if output_embed:
+            return z, self.feature_decoder(embedding)
         return z
 
 
@@ -168,6 +173,24 @@ class PretrainHead(nn.Module):
         x = x.transpose(2,3)                     # [bs x nvars x num_patch x d_model]
         x = self.linear( self.dropout(x) )      # [bs x nvars x num_patch x patch_len]
         x = x.permute(0,2,1,3)                  # [bs x num_patch x nvars x patch_len]
+        return x
+    
+class FeatureDecoder(nn.Module):
+    def __init__(self, d_model, feature_dim, dropout):
+        super().__init__()
+        self.dropout = nn.Dropout(dropout)
+        self.linear = nn.Linear(d_model, feature_dim)
+
+    def forward(self, x):
+        """
+        x: tensor [bs x nvars x d_model x num_patch]
+        output: tensor [bs x nvars x num_patch x feature_dim]
+        """
+
+        x = x.transpose(2,3)                     # [bs x nvars x num_patch x d_model]
+        x = self.linear( self.dropout(x) )      # [bs x nvars x num_patch x feature_dim] 
+        # TODO: might want to fuse over the number of patches dimension
+        # x = x.permute(0,2,1,3)                  # [bs x num_patch x nvars x feature_dim]
         return x
 
 
