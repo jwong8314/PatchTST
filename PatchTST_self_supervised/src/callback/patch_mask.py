@@ -1,6 +1,7 @@
 
 import torch
 from torch import nn
+from torch.nn.functional import normalize, cross_entropy
 
 from .core import Callback
 
@@ -72,7 +73,7 @@ class PatchMaskCB(Callback):
 class ContrastivePatchMaskCB(Callback):
     def __init__(self, patch_len, stride, mask_ratio,
                         mask_when_pred:bool=False, 
-                        discount=0.99):
+                        discount=0.99, beta=0.5, tau = 0.01, num_neg_samples = 20):
         """
         Callback used to perform the pretext task of reconstruct the original data after a binary mask has been applied.
         Args:
@@ -85,6 +86,10 @@ class ContrastivePatchMaskCB(Callback):
         self.mask_ratio = mask_ratio   
         self.output_embed=True 
         self.discount = discount
+        self.beta = beta # relative weight between reconstruction and contrast
+        self.tau = tau # temperature parameter for infoNCE
+        self.criterion = cross_entropy
+        self.num_neg_samples = num_neg_samples
 
     def before_fit(self):
         # overwrite the predefined loss function
@@ -115,52 +120,99 @@ class ContrastivePatchMaskCB(Callback):
         
         contrastive_loss = self.contrast(contrastive_preds,target)
         
-        return loss
+        return loss + self.beta * contrastive_loss
     
-    def contrast(self,contrastive_pred):
-        # randomly sample from another batch 
+    def get_neg_samples(self,num_neg_samples,contrastive_pred):
+        '''
+            Returns negative samples :: [ bs x num_patch - 1 x num_neg_samples x n_vars x embedding_dim ]
+        '''
         
-        # positive pair same backbone [bs x num_patch x n_vars x embedding_dim]
         bs, num_patch,n_vars,embedding_dim = contrastive_pred.shape
-        is_future_mask = torch.triu(torch.ones(num_patch,num_patch), diagonal=1) 
-        
-        discount = torch.stack([torch.arange(num_patch)-i for i in range(num_patch)])
-        discount = torch.pow(torch.ones(num_patch,num_patch)*self.discount,discount)
-        probs = is_future_mask * discount
-        probs = torch.log(probs[:-1]) # last one has no future :(
-        
-        index = torch.distributions.categorical.Categorical(logits=probs).sample([bs])
-        index = index.unsqueeze(2).unsqueeze(3).repeat(1,1,n_vars,embedding_dim) # match dims
-        pos_pair = torch.gather(contrastive_pred,1,index), contrastive_pred[:,-1, :, :]
-        
-        cos = torch.nn.CosineSimilarity(dim=3)
-        rho = cos(pos_pair[0], pos_pair[1]) # [ bs x num_patch - 1 x n_vars x embedding_dim ]
         
         # negative pair different backbone random patch
-        probs = torch.ones(bs,bs).fill_diagonal_(0)
-        bs_index = torch.distributions.categorical.Categorical(logits=probs).sample([1]) # [ 1 x bs ]
-        bs_index = bs_index.squeeze() # [ bs ]
-        
-        # sample negative by batch dim
-        bs_neg_samples_idx = bs_index.view(bs,1,1,1).repeat(1,num_patch,n_vars,embedding_dim) # [ bs x num_patch x n_vars x embedding_dim ]
-        bs_neg_samples = torch.gather(contrastive_pred,0,bs_neg_samples_idx)
-         
-        probs = torch.ones(num_patch,num_patch)[:-1]
-        patch_index = torch.distributions.categorical.Categorical(logits=probs).sample([bs]) # [ bs x num_patch - 1]
-        
-        # sample negatives by patch index from batch samples
-        neg_samples_idx = patch_index.view(*patch_index,1,1).repeat(1,1,n_vars,embedding_dim)
-        neg_samples = torch.gather(bs_neg_samples,1,neg_samples_idx)
-        
-        #TODO: convert this to sample more than one negative sample
-        
-        
-        
-        
-        
-        
-        
+        probs = torch.log(torch.ones(bs,bs).fill_diagonal_(0))
+        bs_index = torch.distributions.categorical.Categorical(logits=probs).sample([num_neg_samples*(num_patch-1)]) # [ num_neg_samples*num_patch x bs ]
+        bs_index = bs_index.transpose(0,1) # [ bs x num_neg_samples*num_patch ]
 
+        # sample negative by batch dim
+        bs_neg_samples_idx = bs_index.view(bs,(num_patch-1),num_neg_samples,1,1).repeat(1,1,1,n_vars,embedding_dim) # [ bs x num_patch - 1 x num_neg_samples x n_vars x embedding_dim ]
+
+        probs = torch.log(torch.ones(num_patch,num_patch)[:-1]) # 4 numbers uniform [0,patch_num]
+        patch_index = torch.distributions.categorical.Categorical(logits=probs).sample([bs*num_neg_samples]) # [ bs*num_neg_samples x num_patch - 1]
+        patch_index = patch_index.reshape(bs,num_patch -1, num_neg_samples) # [ bs x num_patch -1 x num_neg_samples ]
+
+        # sample negatives by patch index from batch samples
+        patch_neg_samples_idx = patch_index.unsqueeze(3).unsqueeze(4)
+        patch_neg_samples_idx = patch_neg_samples_idx.repeat(1,1,1,n_vars,embedding_dim)
+
+        neg_samples_idx = bs_neg_samples_idx * num_patch + patch_neg_samples_idx
+
+
+        contrastive_pred_view = contrastive_pred.reshape(-1,n_vars,embedding_dim)
+        contrastive_pred_view = contrastive_pred_view.unsqueeze(1).repeat(1,num_neg_samples,1,1)
+        neg_samples_idx_view = neg_samples_idx.reshape(-1,num_neg_samples ,n_vars,embedding_dim)
+
+        neg_samples = torch.gather(contrastive_pred_view,0,neg_samples_idx_view)
+
+        neg_samples = neg_samples.reshape(bs,num_patch-1,num_neg_samples,n_vars,embedding_dim)
+        
+        assert neg_samples.shape == (bs, num_patch - 1,num_neg_samples, n_vars,embedding_dim)
+        
+        return neg_samples
+
+    def get_pos_sample(self,contrastive_pred):
+        '''
+            Return positive sample :: [bs x num_patch - 1 x num_vars x embedding_dim]
+        '''
+        bs, num_patch,n_vars,embedding_dim = contrastive_pred.shape
+        is_future_mask = torch.triu(torch.ones(num_patch,num_patch), diagonal=1) 
+
+        discount = torch.stack([torch.arange(num_patch)-i for i in range(num_patch)])
+        discount = torch.pow(torch.ones(num_patch,num_patch)*0.99,discount)
+        probs = is_future_mask * discount
+        probs = torch.log(probs[:-1]) # last one has no future :(
+
+        index = torch.distributions.categorical.Categorical(logits=probs).sample([bs])
+        index = index.unsqueeze(2).unsqueeze(3).repeat(1,1,n_vars,embedding_dim) # match dims
+        pos_sample = torch.gather(contrastive_pred,1,index)
+        assert pos_sample.shape == (bs, num_patch - 1 , n_vars,embedding_dim)
+        return pos_sample
+
+    def InfoNCE(self,pos_pair,neg_pair):
+        pred, pos_sample = pos_pair
+        pred, pos_sample = normalize(pred,dim=3), normalize(pos_sample,dim=3)
+        pos = torch.einsum('ijkl,ijkl->ijk', pred,pos_sample) # [ bs x num_patch x n_dim ]
+        pos = pos.unsqueeze(3) # [ bs x num_patch x n_dim x 1]
+        
+        neg_pred, neg_samples = neg_pair
+        neg_pred, neg_samples = normalize(neg_pred,dim=4), normalize(neg_samples,dim=4)
+        neg = torch.einsum('ijklm,ijklm->ijkl', neg_pred,neg_samples) # [ bs x num_patch x num_neg_samples x n_dim ]
+        neg = neg.permute(0,1,3,2) # [ bs x num_patch x n_dim x num_neg_samples  ]
+        
+        target = torch.cat([pos,neg], dim = 3)
+        target = target.reshape(-1, target.shape[-1])
+        target = target / self.tau
+
+        label = torch.zeros(target.shape[0])
+        
+        return target, label
+    
+    def contrast(self,contrastive_pred):
+
+
+        # positive pair same backbone [bs x num_patch x n_vars x embedding_dim]
+        prediction = contrastive_pred[:,:-1, :, :] 
+        pos_sample = self.get_pos_sample(contrastive_pred)
+        pos_pair = prediction, pos_sample
+
+        neg_samples = self.get_neg_samples(self.num_neg_samples, contrastive_pred)
+        neg_prediction = prediction.unsqueeze(2).repeat(1,1,self.num_neg_samples,1,1)
+        neg_pair = neg_prediction , neg_samples
+
+        target,label = self.InfoNCE(pos_pair,neg_pair)
+        
+        loss = self.criterion(target,label)
+        return loss     
 
 def create_patch(xb, patch_len, stride):
     """
