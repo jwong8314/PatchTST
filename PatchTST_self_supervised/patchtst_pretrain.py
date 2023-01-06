@@ -47,7 +47,7 @@ parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
 # model id to keep track of the number of models saved
 parser.add_argument('--pretrained_model_id', type=int, default=1, help='id of the saved pretrained model')
 parser.add_argument('--model_type', type=str, default='based_model', help='for multivariate model or univariate model')
-
+parser.add_argument('--contrastive', type=bool, default=False, help='use contrastive patching')
 
 args = parser.parse_args()
 print('args:', args)
@@ -121,8 +121,15 @@ def pretrain_func(lr=args.lr):
     loss_func = torch.nn.MSELoss(reduction='mean')
     # get callbacks
     cbs = [RevInCB(dls.vars, denorm=False)] if args.revin else []
+    if args.contrastive:
+        cbs += [
+            ContrastivePatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio),
+            ]
+    else: 
+        cbs += [
+            PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio),
+            ]
     cbs += [
-         PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio),
          SaveModelCB(monitor='valid_loss', fname=args.save_pretrained_model,                       
                         path=args.save_path)
         ]
