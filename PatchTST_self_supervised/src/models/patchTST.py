@@ -59,6 +59,7 @@ class PatchTST(nn.Module):
             self.head = ClassificationHead(self.n_vars, d_model, target_dim, head_dropout)
             
         self.feature_decoder = FeatureDecoder(d_model, contrastive_dim, head_dropout)
+        self.projection_head = FeatureDecoder(d_model, contrastive_dim, head_dropout)
 
 
     def forward(self, z):                             
@@ -72,7 +73,7 @@ class PatchTST(nn.Module):
         #    [bs x target_dim] for classification
         #    [bs x num_patch x n_vars x patch_len] for pretrain
         if self.output_embed:
-            return z, self.feature_decoder(embedding)
+            return z, self.projection_head(embedding), self.feature_decoder(embedding)
         return z
 
 
