@@ -73,7 +73,7 @@ class PatchTST(nn.Module):
         #    [bs x target_dim] for classification
         #    [bs x num_patch x n_vars x patch_len] for pretrain
         if self.output_embed:
-            return z, self.projection_head(embedding), self.feature_decoder(embedding)
+            return z, self.projection_head(embedding), self.feature_decoder(embedding.detach())
         return z
 
 
