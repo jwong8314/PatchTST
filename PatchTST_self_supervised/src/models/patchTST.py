@@ -31,7 +31,7 @@ class PatchTST(nn.Module):
                  pe:str='zeros', learn_pe:bool=True, head_dropout = 0, 
                  head_type = "prediction", individual = False, 
                  y_range:Optional[tuple]=None, verbose:bool=False, 
-                 contrastive_dim:int=256, **kwargs):
+                 contrastive_dim:int=256, output_embed=False, **kwargs):
 
         super().__init__()
 
@@ -47,6 +47,7 @@ class PatchTST(nn.Module):
         # Head
         self.n_vars = c_in
         self.head_type = head_type
+        self.output_embed = output_embed
 
         if head_type == "pretrain":
             self.head = PretrainHead(d_model, patch_len, head_dropout) # custom head passed as a partial func with all its kwargs
@@ -60,7 +61,7 @@ class PatchTST(nn.Module):
         self.feature_decoder = FeatureDecoder(d_model, contrastive_dim, head_dropout)
 
 
-    def forward(self, z, output_embed=False):                             
+    def forward(self, z):                             
         """
         z: tensor [bs x num_patch x n_vars x patch_len]
         """   
@@ -70,7 +71,7 @@ class PatchTST(nn.Module):
         #    [bs x target_dim] for regression
         #    [bs x target_dim] for classification
         #    [bs x num_patch x n_vars x patch_len] for pretrain
-        if output_embed:
+        if self.output_embed:
             return z, self.feature_decoder(embedding)
         return z
 

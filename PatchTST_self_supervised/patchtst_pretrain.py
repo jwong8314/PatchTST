@@ -83,7 +83,8 @@ def get_model(c_in, args):
                 head_dropout=args.head_dropout,
                 act='relu',
                 head_type='pretrain',
-                res_attention=False
+                res_attention=False,
+                output_embed = args.contrastive
                 )        
     # print out the model size
     print('number of model params', sum(p.numel() for p in model.parameters() if p.requires_grad))
@@ -98,7 +99,13 @@ def find_lr():
     loss_func = torch.nn.MSELoss(reduction='mean')
     # get callbacks
     cbs = [RevInCB(dls.vars, denorm=False)] if args.revin else []
-    cbs += [PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio)]
+    
+    if args.contrastive:
+        cbs += [
+            ContrastivePatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio),
+            ]
+    else: 
+        cbs += [PatchMaskCB(patch_len=args.patch_len, stride=args.stride, mask_ratio=args.mask_ratio)]
         
     # define learner
     learn = Learner(dls, model, 

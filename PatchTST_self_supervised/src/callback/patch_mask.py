@@ -117,8 +117,7 @@ class ContrastivePatchMaskCB(Callback):
         loss = (reconstructive_preds - target) ** 2
         loss = loss.mean(dim=-1)
         loss = (loss * self.mask).sum() / self.mask.sum()
-        
-        contrastive_loss = self.contrast(contrastive_preds,target)
+        contrastive_loss = self.contrast(contrastive_preds)
         
         return loss + self.beta * contrastive_loss
     
@@ -130,14 +129,14 @@ class ContrastivePatchMaskCB(Callback):
         bs, num_patch,n_vars,embedding_dim = contrastive_pred.shape
         
         # negative pair different backbone random patch
-        probs = torch.log(torch.ones(bs,bs).fill_diagonal_(0))
+        probs = torch.log(torch.ones(bs,bs, device=contrastive_pred.device).fill_diagonal_(0))
         bs_index = torch.distributions.categorical.Categorical(logits=probs).sample([num_neg_samples*(num_patch-1)]) # [ num_neg_samples*num_patch x bs ]
         bs_index = bs_index.transpose(0,1) # [ bs x num_neg_samples*num_patch ]
 
         # sample negative by batch dim
         bs_neg_samples_idx = bs_index.view(bs,(num_patch-1),num_neg_samples,1,1).repeat(1,1,1,n_vars,embedding_dim) # [ bs x num_patch - 1 x num_neg_samples x n_vars x embedding_dim ]
 
-        probs = torch.log(torch.ones(num_patch,num_patch)[:-1]) # 4 numbers uniform [0,patch_num]
+        probs = torch.log(torch.ones(num_patch,num_patch, device = contrastive_pred.device)[:-1]) # 4 numbers uniform [0,patch_num]
         patch_index = torch.distributions.categorical.Categorical(logits=probs).sample([bs*num_neg_samples]) # [ bs*num_neg_samples x num_patch - 1]
         patch_index = patch_index.reshape(bs,num_patch -1, num_neg_samples) # [ bs x num_patch -1 x num_neg_samples ]
 
@@ -165,10 +164,10 @@ class ContrastivePatchMaskCB(Callback):
             Return positive sample :: [bs x num_patch - 1 x num_vars x embedding_dim]
         '''
         bs, num_patch,n_vars,embedding_dim = contrastive_pred.shape
-        is_future_mask = torch.triu(torch.ones(num_patch,num_patch), diagonal=1) 
+        is_future_mask = torch.triu(torch.ones(num_patch,num_patch, device = contrastive_pred.device), diagonal=1) 
 
-        discount = torch.stack([torch.arange(num_patch)-i for i in range(num_patch)])
-        discount = torch.pow(torch.ones(num_patch,num_patch)*0.99,discount)
+        discount = torch.stack([torch.arange(num_patch, device = contrastive_pred.device)-i for i in range(num_patch)])
+        discount = torch.pow(torch.ones(num_patch,num_patch, device = contrastive_pred.device)*0.99,discount)
         probs = is_future_mask * discount
         probs = torch.log(probs[:-1]) # last one has no future :(
 
@@ -193,7 +192,7 @@ class ContrastivePatchMaskCB(Callback):
         target = target.reshape(-1, target.shape[-1])
         target = target / self.tau
 
-        label = torch.zeros(target.shape[0])
+        label = torch.zeros(target.shape[0], device = target.device)
         
         return target, label
     

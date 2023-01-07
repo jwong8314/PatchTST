@@ -180,7 +180,7 @@ class Learner(GetAttr):
 
     def model_forward(self):
         self('before_forward')
-        self.pred = self.model(self.xb, output_embed=self.output_embed)
+        self.pred = self.model(self.xb) #, output_embed=self.output_embed)
         self('after_forward')
         return self.pred
 
