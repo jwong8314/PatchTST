@@ -73,7 +73,7 @@ class PatchMaskCB(Callback):
 class ContrastivePatchMaskCB(Callback):
     def __init__(self, patch_len, stride, mask_ratio,
                         mask_when_pred:bool=False, 
-                        discount=0.99, beta=0.5, tau = 0.01, num_neg_samples = 20):
+                        discount=0.99, beta=0.5, tau = 0.1, num_neg_samples = 20):
         """
         Callback used to perform the pretext task of reconstruct the original data after a binary mask has been applied.
         Args:
@@ -113,11 +113,11 @@ class ContrastivePatchMaskCB(Callback):
         preds:   [bs x num_patch x n_vars x embedding_dim],[bs x num_patch x n_vars x patch_len]
         targets: [bs x num_patch x n_vars x patch_len] 
         """
-        reconstructive_preds, contrastive_preds = preds
+        reconstructive_preds, contrastive_golden, contrastive_preds = preds
         loss = (reconstructive_preds - target) ** 2
         loss = loss.mean(dim=-1)
         loss = (loss * self.mask).sum() / self.mask.sum()
-        contrastive_loss = self.contrast(contrastive_preds)
+        contrastive_loss = self.contrast(contrastive_golden, contrastive_preds)
         
         return loss + self.beta * contrastive_loss
     
@@ -192,15 +192,16 @@ class ContrastivePatchMaskCB(Callback):
         target = target.reshape(-1, target.shape[-1])
         target = target / self.tau
 
-        label = torch.zeros(target.shape[0], device = target.device)
+        label = torch.zeros(target.shape[0], device = target.device).long()
         
         return target, label
     
-    def contrast(self,contrastive_pred):
+    def contrast(self,contrastive_golden,contrastive_pred):
 
 
         # positive pair same backbone [bs x num_patch x n_vars x embedding_dim]
-        prediction = contrastive_pred[:,:-1, :, :] 
+        # prediction = contrastive_pred[:,:-1, :, :] 
+        prediction = contrastive_golden[:,:-1, :, :] 
         pos_sample = self.get_pos_sample(contrastive_pred)
         pos_pair = prediction, pos_sample
 
