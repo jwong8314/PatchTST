@@ -54,7 +54,11 @@ parser.add_argument('--wandb', type=bool, default=True, help='set wandb')
 args = parser.parse_args()
 print('args:', args)
 args.save_pretrained_model = 'patchtst_pretrained_cw'+str(args.context_points)+'_patch'+str(args.patch_len) + '_stride'+str(args.stride) + '_epochs-pretrain' + str(args.n_epochs_pretrain) + '_mask' + str(args.mask_ratio)  + '_model' + str(args.pretrained_model_id) + '_horizon' + str(args.target_points)
-args.save_path = 'saved_models/' + args.dset_pretrain + '/masked_patchtst/' + args.model_type + '/'
+if args.contrastive:
+    pretraining_mode = '/contrastive_masked_patchtst/'
+else:
+    pretraining_mode = '/masked_patchtst/'
+args.save_path = 'saved_models/' + args.dset_pretrain + pretraining_mode + args.model_type + '/'
 if not os.path.exists(args.save_path): os.makedirs(args.save_path)
 
 
