@@ -168,7 +168,7 @@ if __name__ == '__main__':
     args.dset = args.dset_pretrain
     if args.wandb: 
         wandb.init(project=args.dset, entity='contrastive_patch', config=args)
-        wandb.save(str(Path("./saved_models/") / args.dset / "masked_patchtst" / "based_model" / "*"), policy="now")
+        wandb.save(str(Path("./saved_models/") / args.dset / pretraining_mode / args.model_type / "*"), policy="now")
         
     suggested_lr = find_lr()
     # Pretrain

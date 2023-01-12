@@ -192,7 +192,8 @@ class Learner(GetAttr):
     def _do_batch_validate(self):       
         # forward + calculate loss
         self.pred, self.loss = self.valid_step(self.batch)   
-        self.log({"val_loss": self.loss})  
+        if self.wandb:
+            wandb.log({"val_loss": self.loss})  
 
     def valid_step(self, batch):
         # get the inputs
