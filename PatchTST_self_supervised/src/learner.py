@@ -4,6 +4,7 @@ import torch
 from torch.optim import Adam
 from torch import nn
 from torch.nn.parallel import DistributedDataParallel
+import wandb
 
 from .basics import *
 from .callback.core import * 
@@ -28,12 +29,14 @@ class Learner(GetAttr):
                         cbs=None, 
                         metrics=None, 
                         opt_func=Adam,
+                        wandb=False,
                         **kwargs):
                 
         self.model, self.dls, self.loss_func, self.lr = model, dls, loss_func, lr
         self.opt_func = opt_func
         #self.opt = self.opt_func(self.model.parameters(), self.lr) 
         self.set_opt()
+        self.wandb=wandb
         
         self.metrics = metrics
         self.n_inp  = 2
@@ -132,7 +135,7 @@ class Learner(GetAttr):
 
     def all_batches(self, type_):
         # for self.num,self.batch in enumerate(progress_bar(dl, leave=False)):        
-        for num, batch in enumerate(self.dl):            
+        for num, batch in enumerate(tqdm(self.dl)):            
             self.iter, self.batch = num, batch            
             if type_ == 'train': self.batch_train()
             elif type_ == 'valid': self.batch_validate()
@@ -161,7 +164,9 @@ class Learner(GetAttr):
         
     def _do_batch_train(self):        
         # forward + get loss + backward + optimize          
-        self.pred, self.loss = self.train_step(self.batch)                                      
+        self.pred, self.loss = self.train_step(self.batch)      
+        if self.wandb:
+            wandb.log({"loss": self.loss})                                
         # zero the parameter gradients
         self.opt.zero_grad()                 
         # gradient
@@ -186,7 +191,8 @@ class Learner(GetAttr):
 
     def _do_batch_validate(self):       
         # forward + calculate loss
-        self.pred, self.loss = self.valid_step(self.batch)     
+        self.pred, self.loss = self.valid_step(self.batch)   
+        self.log({"val_loss": self.loss})  
 
     def valid_step(self, batch):
         # get the inputs
@@ -266,6 +272,8 @@ class Learner(GetAttr):
         # calculate scores
         if scores: 
             s_vals = [score(cb.targets, cb.preds).to('cpu').numpy() for score in list(scores)]
+            if self.wandb: 
+                wandb.log({"MSE": s_vals[0], "MAE": s_vals[1]})
             return self.preds, self.targets, s_vals
         else: return self.preds, self.targets
 

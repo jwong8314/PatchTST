@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import torch
 from torch import nn
+import wandb
 
 from src.models.patchTST import PatchTST
 from src.learner import Learner, transfer_weights
@@ -14,7 +15,7 @@ from src.callback.transforms import *
 from src.metrics import *
 from src.basics import set_device
 from datautils import *
-
+from pathlib import Path
 
 import argparse
 
@@ -48,6 +49,7 @@ parser.add_argument('--lr', type=float, default=1e-4, help='learning rate')
 parser.add_argument('--pretrained_model_id', type=int, default=1, help='id of the saved pretrained model')
 parser.add_argument('--model_type', type=str, default='based_model', help='for multivariate model or univariate model')
 parser.add_argument('--contrastive', type=bool, default=False, help='use contrastive patching')
+parser.add_argument('--wandb', type=bool, default=True, help='set wandb')
 
 args = parser.parse_args()
 print('args:', args)
@@ -145,6 +147,7 @@ def pretrain_func(lr=args.lr):
                         loss_func, 
                         lr=lr, 
                         cbs=cbs,
+                        wandb=args.wandb
                         #metrics=[mse]
                         )                        
     # fit the data to the model
@@ -159,6 +162,10 @@ def pretrain_func(lr=args.lr):
 if __name__ == '__main__':
     
     args.dset = args.dset_pretrain
+    if args.wandb: 
+        wandb.init(project=args.dset, entity='contrastive_patch', config=args)
+        wandb.save(str(Path("./saved_models/") / args.dset / "masked_patchtst" / "based_model" / "*"), policy="now")
+        
     suggested_lr = find_lr()
     # Pretrain
     pretrain_func(suggested_lr)
