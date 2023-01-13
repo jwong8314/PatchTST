@@ -16,7 +16,11 @@ from src.metrics import *
 from src.basics import set_device
 from datautils import *
 
+from pathlib import Path
+
+
 import argparse
+import wandb
 
 parser = argparse.ArgumentParser()
 # Pretraining and Finetuning
@@ -50,10 +54,14 @@ parser.add_argument('--pretrained_model', type=str, default=None, help='pretrain
 # model id to keep track of the number of models saved
 parser.add_argument('--finetuned_model_id', type=int, default=1, help='id of the saved finetuned model')
 parser.add_argument('--model_type', type=str, default='based_model', help='for multivariate model or univariate model')
-
+parser.add_argument('--contrastive', type=bool, default=False, help='use contrastive patching')
 
 args = parser.parse_args()
 print('args:', args)
+if args.contrastive:
+    pretraining_mode = '/contrastive_masked_patchtst/'
+else:
+    pretraining_mode = '/masked_patchtst/'
 args.save_path = 'saved_models/' + args.dset_finetune + '/masked_patchtst/' + args.model_type + '/'
 if not os.path.exists(args.save_path): os.makedirs(args.save_path)
 
@@ -152,7 +160,8 @@ def finetune_func(lr=args.lr):
                         loss_func, 
                         lr=lr, 
                         cbs=cbs,
-                        metrics=[mse]
+                        metrics=[mse],
+                        wandb=args.wandb
                         )                            
     # fit the data to the model
     #learn.fit_one_cycle(n_epochs=args.n_epochs_finetune, lr_max=lr)
@@ -206,6 +215,10 @@ def test_func(weight_path):
 
 
 if __name__ == '__main__':
+    
+    if args.wandb: 
+        wandb.init(project=args.dset, entity='contrastive_patch', config=args)
+        wandb.save(str(Path("./saved_models/") / args.dset / pretraining_mode / args.model_type / "*"), policy="now")
         
     if args.is_finetune:
         args.dset = args.dset_finetune
