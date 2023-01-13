@@ -42,7 +42,7 @@ parser.add_argument('--revin', type=int, default=1, help='reversible instance no
 # Model args
 parser.add_argument('--n_layers', type=int, default=3, help='number of Transformer layers')
 parser.add_argument('--n_heads', type=int, default=16, help='number of Transformer heads')
-parser.add_argument('--d_model', type=int, default=128, help='Transformer d_model')
+parser.add_argument('--d_model', type=int, default=128, help='Transformer d_model') 
 parser.add_argument('--d_ff', type=int, default=256, help='Tranformer MLP dimension')
 parser.add_argument('--dropout', type=float, default=0.2, help='Transformer dropout')
 parser.add_argument('--head_dropout', type=float, default=0.2, help='head dropout')
@@ -55,6 +55,7 @@ parser.add_argument('--pretrained_model', type=str, default=None, help='pretrain
 parser.add_argument('--finetuned_model_id', type=int, default=1, help='id of the saved finetuned model')
 parser.add_argument('--model_type', type=str, default='based_model', help='for multivariate model or univariate model')
 parser.add_argument('--contrastive', type=bool, default=False, help='use contrastive patching')
+parser.add_argument('--wandb', type=bool, default=True, help='set wandb')
 
 args = parser.parse_args()
 print('args:', args)
@@ -215,6 +216,8 @@ def test_func(weight_path):
 
 
 if __name__ == '__main__':
+
+    args.dset = args.dset_finetune
     isfinetune = "-ft" if args.is_finetune else ""
     islinearprobe = "-lp" if args.is_linear_probe else "" 
     if args.wandb: 

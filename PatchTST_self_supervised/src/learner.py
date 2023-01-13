@@ -142,6 +142,9 @@ class Learner(GetAttr):
             elif type_ == 'predict': self.batch_predict()             
             elif type_ == 'test': self.batch_test()
 
+        if self.wandb:
+            wandb.log({type_ +"_loss": self.loss})                                
+
     def batch_train(self):
         self('before_batch_train')
         self._do_batch_train()
@@ -165,8 +168,6 @@ class Learner(GetAttr):
     def _do_batch_train(self):        
         # forward + get loss + backward + optimize          
         self.pred, self.loss = self.train_step(self.batch)      
-        if self.wandb:
-            wandb.log({"loss": self.loss})                                
         # zero the parameter gradients
         self.opt.zero_grad()                 
         # gradient
