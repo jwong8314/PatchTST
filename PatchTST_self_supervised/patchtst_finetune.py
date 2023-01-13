@@ -215,9 +215,10 @@ def test_func(weight_path):
 
 
 if __name__ == '__main__':
-    
+    isfinetune = "-ft" if args.is_finetune else ""
+    islinearprobe = "-lp" if args.is_linear_probe else "" 
     if args.wandb: 
-        wandb.init(project=args.dset, entity='contrastive_patch', config=args)
+        wandb.init(project=args.dset + isfinetune + islinearprobe, entity='contrastive_patch', config=args)
         wandb.save(str(Path("./saved_models/") / args.dset / pretraining_mode / args.model_type / "*"), policy="now")
         
     if args.is_finetune:
